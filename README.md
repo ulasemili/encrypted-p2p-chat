@@ -1,28 +1,24 @@
-# Ağ Ortamında Şifreli Haberleşme Yapan Bilgisayar Yazılımı
+# Şifreli P2P Haberleşme Uygulaması
 
-Bu proje, iki bilgisayarın aynı ağ içinde doğrudan birbirine bağlanarak şifreli mesajlaşmasını sağlayan masaüstü bir Python uygulamasıdır.
+Bu proje, aynı ağdaki iki bilgisayarın merkezi sunucu kullanmadan doğrudan TCP/IP üzerinden haberleşmesini sağlar. Mesaj içerikleri ağda açık metin olarak gitmez. Mesajlar 6x6 Türkçe Playfair algoritmasıyla şifrelenir.
 
-Projede merkezi bir sunucu yoktur. Her bilgisayar aynı anda hem dinleyici hem de gönderici olarak çalışır. Mesajlar TCP/IP socket ile gönderilir, arayüzün donmaması için ağ işlemleri ayrı thread üzerinde yürütülür, kullanıcı bilgileri ve mesaj geçmişi yerel SQLite veritabanında saklanır. Mesaj içeriği, Türkçe karakter setine göre düzenlenmiş 6x6 Playfair algoritmasıyla şifrelenir.
+Bu sürümde bağlantıyı kuran kişi, o mesajlaşmada kullanılacak Playfair anahtarını kendisi belirler. Bu anahtar karşı tarafa açık şekilde gönderilmez. Önce Diffie-Hellman tabanlı güvenli anahtar değişimi yapılır, sonra Playfair anahtarı bu güvenli kanal üzerinden şifrelenerek karşı tarafa iletilir.
 
----
+## Temel özellikler
 
-## 1. Projenin temel özellikleri
+- Python 3 ile Windows, macOS ve Linux desteği
+- CustomTkinter ile masaüstü arayüz
+- TCP/IP socket ile P2P bağlantı
+- Threading ile arayüz donmadan mesaj alma
+- SQLite ile yerel kullanıcı ve mesaj geçmişi kaydı
+- SHA-256 ile parola hashleme
+- 29 Türkçe harf + 7 karakter içeren 6x6 Playfair şifreleme
+- RSA kullanmadan Diffie-Hellman tabanlı güvenli anahtar paylaşımı
+- Mesajların ekranda önce şifreli görünmesi
+- Mesaja tıklayınca açık metnin gösterilmesi
+- Oturum anahtarının ekranda doğrudan görünmemesi, sadece butona basınca gösterilmesi
 
-- Python 3 ile geliştirilmiştir.
-- Windows 10/11, macOS ve Linux üzerinde çalışabilir.
-- Arayüz için CustomTkinter kullanır.
-- Ağ haberleşmesi için TCP socket kullanır.
-- P2P yapıdadır; merkezi sunucu yoktur.
-- Her bilgisayar kendi portunu dinler ve diğer bilgisayara IP adresiyle bağlanır.
-- Kullanıcı parolaları düz metin olarak saklanmaz; SHA-256 hash olarak SQLite veritabanına kaydedilir.
-- Gelen ve giden mesajlar yerel veritabanında tutulur.
-- Karşı bilgisayarın giriş yaptığı kullanıcı adı sohbet ekranının üstünde görünür.
-- Mesajlarda boşluk, nokta, virgül, soru işareti, ünlem ve iki nokta desteklenir.
-- Varsayılan şifreleme anahtarı: `türkiyem!`
-
----
-
-## 2. Proje dosya yapısı
+## Klasör yapısı
 
 ```text
 encrypted_p2p_chat/
@@ -33,275 +29,204 @@ encrypted_p2p_chat/
 ├── .gitignore
 │
 └── app/
-    ├── __init__.py
     ├── config.py
-    │
     ├── crypto/
-    │   ├── __init__.py
-    │   └── playfair.py
-    │
+    │   ├── playfair.py
+    │   └── key_exchange.py
     ├── db/
-    │   ├── __init__.py
     │   └── database.py
-    │
     ├── network/
-    │   ├── __init__.py
     │   └── peer.py
-    │
     ├── ui/
-    │   ├── __init__.py
     │   ├── login_window.py
     │   └── chat_window.py
-    │
     └── utils/
-        ├── __init__.py
         └── helpers.py
 ```
 
-Kısa açıklama:
+## Şifreleme sistemi nasıl çalışır?
 
-| Dosya/Klasör | Görevi |
-|---|---|
-| `run.py` | Uygulamayı başlatan ana dosyadır. |
-| `requirements.txt` | Kurulması gereken Python paketlerini içerir. |
-| `app/config.py` | Varsayılan port, varsayılan anahtar ve veritabanı yolu gibi ayarları tutar. |
-| `app/crypto/playfair.py` | 6x6 Türkçe Playfair şifreleme ve çözme algoritmasını içerir. |
-| `app/db/database.py` | SQLite veritabanı, kullanıcı kayıt/giriş ve mesaj geçmişi işlemlerini yapar. |
-| `app/network/peer.py` | TCP/IP P2P bağlantı, dinleme, bağlanma, mesaj gönderme ve mesaj alma işlemlerini yapar. |
-| `app/ui/login_window.py` | Kullanıcı kayıt/giriş ekranıdır. |
-| `app/ui/chat_window.py` | Sohbet, bağlantı ve şifreleme arayüzüdür. |
-| `app/utils/helpers.py` | Yerel IP bulma ve zaman bilgisi gibi yardımcı fonksiyonları içerir. |
+Sistem iki aşamalı çalışır.
 
----
+### 1. Playfair anahtarını güvenli paylaşma
 
-## 3. 6x6 Türkçe Playfair karakter seti
+Bağlantıyı başlatan kişi, arayüzdeki `Bu mesajlaşmanın Playfair anahtarı` alanına bir anahtar yazar. Varsayılan değer `türkiyem!` olarak gelir ama istenirse değiştirilebilir.
 
-Bu projede Playfair matrisi 36 hücrelidir.
+Bu anahtar karşı tarafa düz metin olarak gönderilmez. Bağlantı kurulunca iki taraf geçici anahtarlar üretir ve Diffie-Hellman mantığıyla ortak bir gizli değer oluşturur. Bu gizli değerden geçici bir şifreleme anahtarı türetilir. Bağlantıyı başlatan kişinin yazdığı Playfair anahtarı bu geçici anahtarla şifrelenerek karşı tarafa gönderilir.
 
-29 Türkçe harf:
+Bu aşamada amaç yalnızca Playfair oturum anahtarını güvenli paylaşmaktır. Mesajların kendisi Diffie-Hellman ile şifrelenmez.
+
+Ağda açık giden bilgiler:
 
 ```text
-a b c ç d e f g ğ h ı i j k l m n o ö p r s ş t u ü v y z
+public key değerleri
+kullanıcı adı
+paket tipi
+zaman bilgisi
 ```
 
-7 ek karakter:
+Ağda açık gitmeyen bilgiler:
 
 ```text
+Playfair oturum anahtarı
+mesajların açık hali
+```
+
+### 2. Mesajları Playfair ile şifreleme
+
+İki tarafta da aynı Playfair oturum anahtarı hazır olunca mesajlar 6x6 Türkçe Playfair algoritmasıyla şifrelenir.
+
+Matris karakterleri:
+
+```text
+29 Türkçe harf:
+a b c ç d e f g ğ h ı i j k l m n o ö p r s ş t u ü v y z
+
+7 ek karakter:
 boşluk . , ? ! : ^
 ```
 
-Toplam:
+`^` karakteri teknik dolgu karakteridir. Aynı iki karakter yan yana geldiğinde veya mesaj tek karakterle bittiğinde Playfair algoritmasının ikili gruplama mantığı için kullanılır.
+
+## Arayüzde mesajlar neden şifreli görünüyor?
+
+Mesaj balonları ilk geldiğinde veya gönderildiğinde yalnızca şifreli metni gösterir. Balonun içinde gönderen adı veya açıklama yazısı bulunmaz. Açık metni görmek için mesaj balonuna tıklaman gerekir. Tıkladıktan sonra o mesaj açık hale geçer.
+
+Bu davranış, sunumda şunu göstermek için özellikle eklenmiştir:
 
 ```text
-29 harf + 7 ek karakter = 36 karakter
+Ağda ve uygulamanın ilk görüntüsünde mesaj ciphertext olarak durur.
+Kullanıcı isteyince, doğru oturum anahtarıyla plaintext elde edilir.
 ```
 
-`^` karakteri teknik dolgu karakteridir. Playfair algoritmasında mesaj tek sayıda karakterden oluşursa veya aynı iki karakter yan yana gelirse araya dolgu karakteri eklenir.
+## İlk kurulum - Mac
 
-Örnek desteklenen mesaj:
-
-```text
-merhaba dünya, nasılsın?
-```
-
-Bu mesaj boşluk ve noktalama işaretleri korunarak şifrelenir ve karşı tarafta yine okunabilir cümle olarak çözülür.
-
----
-
-## 4. Kuruluma başlamadan önce
-
-İki bilgisayarda da şunlar olmalıdır:
-
-- Python 3.12
-- İnternet bağlantısı, sadece kurulum sırasında paket indirmek için gerekir.
-- İki bilgisayarın aynı Wi-Fi/LAN ağına bağlı olması gerekir.
-- Windows tarafında güvenlik duvarı Python için ağ izni isteyebilir.
-
-Önemli:
-
-- İki bilgisayarda da aynı proje sürümünü kullanın.
-- İki bilgisayarda da aynı şifreleme anahtarını kullanın.
-- Varsayılan anahtar: `türkiyem!`
-- Varsayılan port: `5050`
-
----
-
-## 5. macOS kurulumu ve çalıştırma
-
-Bu adımlar MacBook Silicon ve Intel Mac için kullanılabilir.
-
-### 5.1. Homebrew kontrolü
-
-Terminal açın ve şunu yazın:
-
-```bash
-brew --version
-```
-
-Sürüm bilgisi gelirse Homebrew kuruludur.
-
-Eğer `command not found` gibi bir hata alırsanız Homebrew kurmanız gerekir. Homebrew kurulumu için Terminal'e şu komut yazılabilir:
+### 1. Homebrew yoksa kur
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 
-Kurulum bittikten sonra Terminal'i kapatıp yeniden açın.
-
-### 5.2. Python 3.12 ve Tkinter kurulumu
-
-Mac üzerinde CustomTkinter çalışabilmesi için Python ile birlikte Tkinter desteği de gerekir.
+### 2. Python ve Tkinter kur
 
 ```bash
 brew install python@3.12
 brew install python-tk@3.12
 ```
 
-### 5.3. Proje klasörüne girme
+### 3. Proje klasörüne gir
 
-ZIP dosyasını indirin ve çıkarın. Örneğin proje `Downloads` klasöründeyse:
+ZIP dosyasını Downloads içine çıkardıysan:
 
 ```bash
 cd ~/Downloads/encrypted_p2p_chat
 ```
 
-Başka bir klasöre çıkardıysanız `cd` komutunda kendi klasör yolunuzu kullanın.
-
-### 5.4. Sanal ortam oluşturma
+### 4. Sanal ortam oluştur
 
 ```bash
-rm -rf .venv
 python3.12 -m venv .venv
 source .venv/bin/activate
 ```
 
-Terminal satırının başında `(.venv)` yazıyorsa sanal ortam aktif demektir.
-
-### 5.5. Gerekli paketleri kurma
+### 5. Gerekli paketleri kur
 
 ```bash
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 5.6. Tkinter test etme
-
-```bash
-python -m tkinter
-```
-
-Küçük bir test penceresi açılırsa Tkinter çalışıyor demektir. Pencereyi kapatabilirsiniz.
-
-### 5.7. Uygulamayı çalıştırma
+### 6. Uygulamayı çalıştır
 
 ```bash
 export TK_SILENCE_DEPRECATION=1
 python run.py
 ```
 
-Uygulama açıldıktan sonra Terminal'in beklemede kalması normaldir. Uygulama açık kaldığı sürece `python run.py` komutu çalışmaya devam eder.
+## İlk kurulum - Windows
 
----
+### 1. Python kur
 
-## 6. Windows 10/11 kurulumu ve çalıştırma
+Önerilen yöntem: `python.org` üzerinden Python 3.12 kurmak.
 
-### 6.1. Python kontrolü
+Kurulum ekranında şu seçenek işaretli olmalı:
 
-PowerShell açın ve şunu yazın:
+```text
+Add python.exe to PATH
+```
+
+Microsoft Store Python kullanıyorsan da çalışabilir. Kontrol için PowerShell'de şunu deneyebilirsin:
 
 ```powershell
 python --version
-```
-
-veya:
-
-```powershell
-py --version
-```
-
-`Python 3.12.x` görüyorsanız Python kuruludur.
-
-### 6.2. Tkinter kontrolü
-
-PowerShell'de şunu çalıştırın:
-
-```powershell
 python -m tkinter
 ```
 
-Küçük bir pencere açılırsa Tkinter vardır ve proje arayüzü çalışabilir.
+`python -m tkinter` küçük bir pencere açıyorsa Tkinter vardır.
 
-Eğer bu komut hata verirse Microsoft Store Python yerine python.org üzerindeki resmi Python 3.12 kurulumunu kullanmanız önerilir. Kurulumda `Add python.exe to PATH` seçeneğini işaretleyin.
+### 2. Proje klasörüne gir
 
-### 6.3. Proje klasörüne girme
-
-ZIP dosyasını indirin ve çıkarın. Örneğin proje `Downloads` klasöründeyse:
+ZIP dosyasını Downloads içine çıkardıysan:
 
 ```powershell
 cd Downloads\encrypted_p2p_chat
 ```
 
-Masaüstüne çıkardıysanız:
-
-```powershell
-cd Desktop\encrypted_p2p_chat
-```
-
-### 6.4. Sanal ortam oluşturma
-
+### 3. Sanal ortam oluştur
 
 ```powershell
 python -m venv .venv
 ```
 
-### 6.5. Sanal ortamı aktif etme
+veya:
+
+```powershell
+py -3.12 -m venv .venv
+```
+
+### 4. Sanal ortamı aktif et
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
 ```
 
-Komut çalışınca satırın başında `(.venv)` görünür.
-
-Eğer PowerShell script izni hatası verirse şu komutu bir kez çalıştırın:
+İzin hatası alırsan bir kez şunu çalıştır:
 
 ```powershell
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
 
-Sonra tekrar sanal ortamı aktif edin:
+Sonra tekrar aktif et:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
 ```
 
-### 6.6. Gerekli paketleri kurma
+### 5. Gerekli paketleri kur
 
 ```powershell
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 6.7. Uygulamayı çalıştırma
+### 6. Uygulamayı çalıştır
 
 ```powershell
 python run.py
 ```
 
-Windows Güvenlik Duvarı izin isterse `Private networks / Özel ağlar` için izin verin.
+Windows Güvenlik Duvarı uyarı verirse Python için özel ağ erişimine izin ver.
 
----
+## İkinci ve sonraki çalıştırmalar
 
-## 7. İki bilgisayarda mesajlaşma testi
-
-Aşağıdaki örnekte Mac ve Windows aynı Wi-Fi ağına bağlı kabul edilmiştir.
-
-### 7.1. İki bilgisayarda da uygulamayı açın
+Kurulum bir kez yapıldıktan sonra her seferinde `pip install` yapmana gerek yoktur.
 
 Mac:
 
 ```bash
 cd ~/Downloads/encrypted_p2p_chat
 source .venv/bin/activate
+export TK_SILENCE_DEPRECATION=1
 python run.py
 ```
 
@@ -313,215 +238,53 @@ cd Downloads\encrypted_p2p_chat
 python run.py
 ```
 
-### 7.2. Kullanıcı oluşturun
+## İki bilgisayarda test etme
 
-Her iki bilgisayarda da uygulama ilk açıldığında kullanıcı oluşturun.
+1. İki bilgisayar aynı Wi-Fi veya LAN ağına bağlı olsun.
+2. İki bilgisayarda da uygulamayı aç.
+3. İki bilgisayarda da kullanıcı oluşturup giriş yap.
+4. İki bilgisayarda da `Dinlemeyi Başlat` butonuna bas.
+5. Bağlantıyı başlatacak bilgisayarda karşı tarafın IP adresini ve portunu yaz.
+6. Aynı bilgisayarda `Bu mesajlaşmanın Playfair anahtarı` alanına kullanılacak anahtarı yaz.
+7. `Bağlan` butonuna bas.
+8. Diffie-Hellman tabanlı değişim tamamlanınca iki tarafta da `Anahtar: güvenli oturum hazır` yazar.
+9. Anahtarı görmek istersen `Oturum Anahtarını Göster` butonuna basabilirsin.
+10. Mesaj gönder. Mesaj balonu önce şifreli görünür.
+11. Mesajın açık halini görmek için mesaj balonuna tıkla.
 
-Örnek:
+## Sunumda kısa anlatım
 
-Mac tarafı:
+Projede merkezi sunucu yoktur. Her uygulama aynı anda hem dinleyici hem gönderici gibi çalışır. Bağlantıyı kuran taraf, o oturumda kullanılacak Playfair anahtarını belirler. Bu anahtar ağda açık gönderilmez; önce Diffie-Hellman tabanlı geçici bir güvenli kanal oluşturulur, sonra Playfair anahtarı bu kanalda şifreli gönderilir. Bundan sonraki mesajların tamamı projeye özel 6x6 Türkçe Playfair algoritması ile şifrelenir. Mesajlar arayüzde de önce şifreli görünür; kullanıcı mesaj balonuna tıkladığında doğru oturum anahtarıyla çözülüp açık hale getirilir. Kullanıcı parolaları SQLite veritabanında açık değil SHA-256 hash olarak tutulur.
 
-```text
-Kullanıcı adı: ulas
-Parola: 1234
-```
+## Sorun giderme
 
-Windows tarafı:
+### Uygulama açılmıyor
 
-```text
-Kullanıcı adı: kerem
-Parola: 1234
-```
-
-Not: Kullanıcılar her bilgisayarın kendi SQLite veritabanına kaydedilir. Mac'te oluşturulan kullanıcı Windows'ta otomatik görünmez. Bu normaldir.
-
-### 7.3. Giriş yapın
-
-Oluşturduğunuz kullanıcı adı ve parola ile iki bilgisayarda da giriş yapın.
-
-### 7.4. İki tarafta da dinlemeyi başlatın
-
-Her iki bilgisayarda da `Dinlemeyi Başlat` düğmesine basın.
-
-Varsayılan port:
-
-```text
-5050
-```
-
-### 7.5. IP adreslerini bulun
-
-Uygulamanın sol tarafında `Yerel IP` alanı görünür.
-
-Örnek:
-
-```text
-Mac Yerel IP: 192.168.1.34
-Windows Yerel IP: 192.168.1.41
-```
-
-### 7.6. Bir bilgisayardan diğerine bağlanın
-
-Mac'ten Windows'a bağlanmak için Mac uygulamasında şunları girin:
-
-```text
-Karşı Bilgisayar IP: 192.168.1.41
-Karşı Port: 5050
-```
-
-Sonra `Bağlan` düğmesine basın.
-
-Windows'tan Mac'e bağlanmak için Windows uygulamasında şunları girin:
-
-```text
-Karşı Bilgisayar IP: 192.168.1.34
-Karşı Port: 5050
-```
-
-Sonra `Bağlan` düğmesine basın.
-
-Sadece bir tarafın bağlanması yeterlidir. İki tarafın aynı anda birbirine bağlanması gerekmez.
-
-### 7.7. Şifreleme anahtarını kontrol edin
-
-İki tarafta da aynı anahtar yazılı olmalıdır.
-
-Varsayılan:
-
-```text
-türkiyem!
-```
-
-Anahtar farklı olursa mesajlar doğru çözülemez.
-
-### 7.8. Karşı kullanıcı adını kontrol edin
-
-Bağlantı kurulduktan sonra sohbet ekranının üstünde şu alan görünür:
-
-```text
-Kiminle: karşı_kullanıcı_adı
-```
-
-Örneğin:
-
-```text
-Kiminle: kerem
-```
-
-### 7.9. Mesaj gönderin
-
-Artık mesaj gönderebilirsiniz.
-
-Örnek mesaj:
-
-```text
-merhaba dünya, nasılsın?
-```
-
-Bu mesaj karşı tarafa boşluk ve noktalama işaretleri korunarak gider.
-
----
-
-## 8. Sık karşılaşılan sorunlar
-
-### 8.1. Uygulama açılmıyor
-
-Önce sanal ortamın aktif olduğundan emin olun.
-
-Mac:
-
-```bash
-source .venv/bin/activate
-```
-
-Windows:
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-Sonra tekrar çalıştırın:
-
-```bash
-python run.py
-```
-
-### 8.2. `No module named customtkinter` hatası
-
-Paketler kurulmamış demektir:
-
-```bash
-pip install -r requirements.txt
-```
-
-### 8.3. Mac'te `No module named _tkinter` hatası
-
-Tkinter eksiktir:
+Mac'te Tkinter eksik olabilir:
 
 ```bash
 brew install python-tk@3.12
-rm -rf .venv
-python3.12 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python run.py
 ```
 
-### 8.4. Windows'ta pencere açılmıyor veya Tkinter hatası veriyor
-
-Şunu test edin:
+Windows'ta Tkinter kontrolü:
 
 ```powershell
 python -m tkinter
 ```
 
-Hata verirse python.org üzerinden Python 3.12 kurun ve kurulumda `Add python.exe to PATH` seçeneğini işaretleyin.
+### Bağlantı kurulamıyor
 
-### 8.5. Bağlantı kurulamıyor
-
-Şunları kontrol edin:
-
-1. İki bilgisayar aynı Wi-Fi/LAN ağında mı?
-2. İki tarafta da `Dinlemeyi Başlat` düğmesine basıldı mı?
-3. IP adresi doğru yazıldı mı?
-4. Port değeri iki tarafta da `5050` mi?
-5. Windows Güvenlik Duvarı Python'a izin verdi mi?
-6. Okul, yurt veya şirket ağı cihazlar arası bağlantıyı engelliyor olabilir mi?
-7. Modemde `client isolation / AP isolation` ayarı açık olabilir mi?
-
-### 8.6. Mesaj anlamsız çözülüyor
-
-Bunun en yaygın nedeni iki tarafta şifreleme anahtarının farklı olmasıdır.
-
-İki tarafta da anahtarı aynı yapın:
+Kontrol et:
 
 ```text
-türkiyem!
+1. İki bilgisayar aynı ağda mı?
+2. İki tarafta da Dinlemeyi Başlat butonuna basıldı mı?
+3. IP adresi doğru mu?
+4. Port iki tarafta da aynı mı? Varsayılan: 5050
+5. Windows Güvenlik Duvarı Python'a özel ağ izni verdi mi?
+6. Okul/modem ağı cihazların birbirini görmesini engelliyor olabilir mi?
 ```
 
----
+### Mesaj çözülemiyor veya anlamsız çıkıyor
 
-## 9. Sunumda kodu anlatmak için kısa özet
-
-- `run.py` uygulamayı başlatır.
-- `login_window.py` kullanıcı kayıt/giriş ekranını oluşturur.
-- `database.py` kullanıcıları ve mesajları SQLite içinde saklar.
-- Parolalar SHA-256 ile hashlenir; düz metin olarak tutulmaz.
-- `chat_window.py` sohbet arayüzünü, bağlantı butonlarını ve mesaj gönderme/alma akışını yönetir.
-- `peer.py` TCP soketleriyle P2P haberleşmeyi yürütür.
-- Dinleme işlemi ayrı thread'de çalışır, bu yüzden arayüz donmaz.
-- `playfair.py` mesajı 6x6 Türkçe Playfair algoritmasıyla şifreler ve çözer.
-- İki bilgisayar aynı anahtarı kullanırsa mesaj doğru çözülür.
-- Karşı taraf bağlantı kurunca uygulamalar birbirine `hello` paketi gönderir; böylece sohbet ekranında karşı kullanıcının adı görünür.
-
----
-
-## 10. Projeyi kapatma
-
-Uygulamayı pencerenin kapatma düğmesiyle kapatabilirsiniz.
-
-Sanal ortamdan çıkmak isterseniz Terminal veya PowerShell'de şu komutu kullanın:
-
-```bash
-deactivate
-```
+Bu sürümde anahtarı bağlantıyı başlatan kişi belirler ve karşı tarafa güvenli şekilde gönderilir. Yine de iki bilgisayarda farklı proje sürümleri çalışıyorsa sorun yaşanabilir. İki tarafta da aynı ZIP sürümünü kullan.

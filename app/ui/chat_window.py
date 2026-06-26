@@ -9,7 +9,7 @@ from app.config import APP_NAME, DEFAULT_KEY, DEFAULT_PORT
 from app.crypto import KeyExchange, Playfair6x6
 from app.db import Database
 from app.network import PeerNode
-from app.utils import get_local_ip, now_iso
+from app.utils import get_local_ip, get_tailscale_ip, now_iso
 
 
 class ChatWindow(ctk.CTkToplevel):
@@ -66,14 +66,20 @@ class ChatWindow(ctk.CTkToplevel):
         )
 
         self.local_ip = get_local_ip()
+        self.tailscale_ip = get_tailscale_ip()
+
         ctk.CTkLabel(parent, text=f"Yerel IP: {self.local_ip}").grid(
-            row=1, column=0, padx=18, pady=(0, 14), sticky="w"
+            row=1, column=0, padx=18, pady=(0, 4), sticky="w"
         )
 
-        self._build_listen_box(parent, row=2)
-        self._build_connect_box(parent, row=3)
-        self._build_key_box(parent, row=4)
-        self._build_status_box(parent, row=5)
+        ctk.CTkLabel(parent, text=f"Tailscale IP: {self.tailscale_ip}").grid(
+            row=2, column=0, padx=18, pady=(0, 14), sticky="w"
+        )
+
+        self._build_listen_box(parent, row=3)
+        self._build_connect_box(parent, row=4)
+        self._build_key_box(parent, row=5)
+        self._build_status_box(parent, row=6)
 
         help_text = (
             "Kullanım:\n"
@@ -84,7 +90,7 @@ class ChatWindow(ctk.CTkToplevel):
             "5) Mesaja tıklayınca açık metin gösterilir."
         )
         ctk.CTkLabel(parent, text=help_text, justify="left", wraplength=265, text_color="gray75").grid(
-            row=6, column=0, padx=18, pady=(12, 0), sticky="w"
+            row=7, column=0, padx=18, pady=(12, 0), sticky="w"
         )
 
     def _build_listen_box(self, parent: ctk.CTkFrame, row: int) -> None:
@@ -101,35 +107,66 @@ class ChatWindow(ctk.CTkToplevel):
             row=2, column=0, padx=12, pady=(0, 12), sticky="ew"
         )
 
-    def _build_connect_box(self, parent: ctk.CTkFrame, row: int) -> None:
+    def _build_connect_box(self, parent, row: int) -> None:
         box = ctk.CTkFrame(parent)
-        box.grid(row=row, column=0, padx=14, pady=8, sticky="ew")
+        box.grid(row=row, column=0, padx=18, pady=(0, 16), sticky="ew")
         box.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(box, text="Karşı Bilgisayar IP").grid(row=0, column=0, padx=12, pady=(12, 4), sticky="w")
-        self.peer_ip_entry = ctk.CTkEntry(box, placeholder_text="Örn: 192.168.1.25")
-        self.peer_ip_entry.grid(row=1, column=0, padx=12, pady=(0, 8), sticky="ew")
+        ctk.CTkLabel(box, text="Bağlantı Türü").grid(
+            row=0, column=0, padx=12, pady=(12, 4), sticky="w"
+        )
 
-        ctk.CTkLabel(box, text="Karşı Port").grid(row=2, column=0, padx=12, pady=(4, 4), sticky="w")
+        self.connection_mode = ctk.CTkSegmentedButton(
+            box,
+            values=["Aynı Wi-Fi", "Farklı Wi-Fi / Tailscale"],
+            command=self._on_connection_mode_changed,
+        )
+        self.connection_mode.set("Aynı Wi-Fi")
+        self.connection_mode.grid(row=1, column=0, padx=12, pady=(0, 10), sticky="ew")
+
+        ctk.CTkLabel(box, text="Karşı Bilgisayar IP").grid(
+            row=2, column=0, padx=12, pady=(4, 4), sticky="w"
+        )
+
+        self.peer_ip_entry = ctk.CTkEntry(
+            box,
+            placeholder_text="Örn: 192.168.1.25"
+        )
+        self.peer_ip_entry.grid(row=3, column=0, padx=12, pady=(0, 8), sticky="ew")
+
+        ctk.CTkLabel(box, text="Karşı Port").grid(
+            row=4, column=0, padx=12, pady=(4, 4), sticky="w"
+        )
+
         self.peer_port_entry = ctk.CTkEntry(box)
         self.peer_port_entry.insert(0, str(DEFAULT_PORT))
-        self.peer_port_entry.grid(row=3, column=0, padx=12, pady=(0, 10), sticky="ew")
+        self.peer_port_entry.grid(row=5, column=0, padx=12, pady=(0, 10), sticky="ew")
 
-        ctk.CTkButton(box, text="Bağlan", command=self.connect_to_peer).grid(
-            row=4, column=0, padx=12, pady=(0, 10), sticky="ew"
-        )
+        ctk.CTkButton(
+            box,
+            text="Bağlan",
+            command=self.connect_to_peer
+        ).grid(row=6, column=0, padx=12, pady=(0, 10), sticky="ew")
 
         ctk.CTkLabel(box, text="Bu mesajlaşmanın Playfair anahtarı").grid(
-            row=5, column=0, padx=12, pady=(2, 4), sticky="w"
+            row=7, column=0, padx=12, pady=(2, 4), sticky="w"
         )
-        self.connect_key_entry = ctk.CTkEntry(box, show="*", placeholder_text="Örn: türkiyem!")
-        self.connect_key_entry.insert(0, DEFAULT_KEY)
-        self.connect_key_entry.grid(row=6, column=0, padx=12, pady=(0, 8), sticky="ew")
 
-        note = "Bu alanı bağlantıyı kuran kişi belirler; karşı tarafa açık gönderilmez."
-        ctk.CTkLabel(box, text=note, justify="left", wraplength=255, text_color="gray70").grid(
-            row=7, column=0, padx=12, pady=(0, 12), sticky="w"
+        self.connect_key_entry = ctk.CTkEntry(
+            box,
+            show="*",
+            placeholder_text="Bağlantıyı başlatan kişi belirler"
         )
+        self.connect_key_entry.grid(row=8, column=0, padx=12, pady=(0, 8), sticky="ew")
+
+        note = "Bu anahtar karşı tarafa açık gönderilmez; güvenli anahtar değişimi ile aktarılır."
+        ctk.CTkLabel(
+            box,
+            text=note,
+            justify="left",
+            wraplength=255,
+            text_color="gray70"
+        ).grid(row=9, column=0, padx=12, pady=(0, 12), sticky="w")
 
     def _build_key_box(self, parent: ctk.CTkFrame, row: int) -> None:
         box = ctk.CTkFrame(parent)
@@ -209,6 +246,30 @@ class ChatWindow(ctk.CTkToplevel):
             row=0, column=1, padx=(8, 12), pady=12
         )
 
+    def _on_connection_mode_changed(self, mode: str) -> None:
+        if mode == "Aynı Wi-Fi":
+            self.peer_ip_entry.configure(
+                placeholder_text="Örn: 192.168.1.25"
+            )
+            message = (
+                f"Aynı Wi-Fi modu seçildi. "
+                f"Karşı cihaz bu ağa bağlıysa onun Yerel IP adresini girin. "
+                f"Senin Yerel IP: {self.local_ip}"
+            )
+        else:
+            self.peer_ip_entry.configure(
+                placeholder_text="Örn: 100.x.x.x Tailscale IP"
+            )
+            message = (
+                f"Tailscale modu seçildi. "
+                f"Karşı cihazın Tailscale IP adresini girin. "
+                f"Senin Tailscale IP: {self.tailscale_ip}"
+            )
+
+        if hasattr(self, "status_label"):
+            self._set_status(message, connected=self.peer.connected)
+
+
     # ---------- Kullanıcı işlemleri ----------
 
     def start_listening(self) -> None:
@@ -218,8 +279,25 @@ class ChatWindow(ctk.CTkToplevel):
 
     def connect_to_peer(self) -> None:
         host = self.peer_ip_entry.get().strip()
+
         if not host:
             messagebox.showwarning("Eksik Bilgi", "Karşı bilgisayarın IP adresini yazın.")
+            return
+
+        mode = self.connection_mode.get()
+
+        if mode == "Farklı Wi-Fi / Tailscale" and not host.startswith("100."):
+            self._set_status(
+                "Tailscale modu seçili. Karşı cihazın 100.x.x.x ile başlayan Tailscale IP adresini girin.",
+                connected=False,
+            )
+            return
+
+        if mode == "Aynı Wi-Fi" and host.startswith("100."):
+            self._set_status(
+                "Aynı Wi-Fi modu seçili. 100.x.x.x Tailscale IP yerine yerel 192.168.x.x IP girmeniz beklenir.",
+                connected=False,
+            )
             return
 
         port = self._read_port(self.peer_port_entry, "Karşı port")

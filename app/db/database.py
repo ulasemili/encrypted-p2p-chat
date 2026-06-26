@@ -44,6 +44,11 @@ class Database:
                 """
             )
 
+            try:
+                self.conn.execute("ALTER TABLE messages ADD COLUMN peer_username TEXT")
+            except sqlite3.OperationalError:
+                pass
+
     @staticmethod
     def password_hash(password: str) -> str:
         return hashlib.sha256(password.encode("utf-8")).hexdigest()
@@ -84,14 +89,15 @@ class Database:
         direction: str,
         plaintext: str,
         ciphertext: str,
+        peer_username: str = "",
     ) -> None:
         with self._lock, self.conn:
             self.conn.execute(
                 """
-                INSERT INTO messages(username, peer_address, direction, plaintext, ciphertext)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO messages(username, peer_address, peer_username, direction, plaintext, ciphertext)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (username, peer_address, direction, plaintext, ciphertext),
+                (username, peer_address, peer_username, direction, plaintext, ciphertext),
             )
 
     def get_recent_messages(self, username: str, limit: int = 50) -> list[sqlite3.Row]:
@@ -107,6 +113,60 @@ class Database:
                 (username, limit),
             ).fetchall()
         return list(reversed(rows))
+
+    def get_recent_peers(self, username: str) -> list[sqlite3.Row]:
+        with self._lock:
+            rows = self.conn.execute(
+                """
+                SELECT 
+                    peer_address,
+                    COALESCE(NULLIF(peer_username, ''), peer_address) AS display_name,
+                    MAX(created_at) AS last_time,
+                    COUNT(*) AS message_count
+                FROM messages
+                WHERE username = ?
+                GROUP BY peer_address
+                ORDER BY last_time DESC
+                """,
+                (username,),
+            ).fetchall()
+        return rows
+
+    def get_messages_with_peer(
+        self,
+        username: str,
+        peer_address: str,
+        limit: int = 100
+    ) -> list[sqlite3.Row]:
+        with self._lock:
+            rows = self.conn.execute(
+                """
+                SELECT 
+                    peer_address,
+                    peer_username,
+                    direction,
+                    plaintext,
+                    ciphertext,
+                    created_at
+                FROM messages
+                WHERE username = ? AND peer_address = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (username, peer_address, limit),
+            ).fetchall()
+
+        return list(reversed(rows))
+
+    def delete_messages_with_peer(self, username: str, peer_address: str) -> None:
+        with self._lock, self.conn:
+            self.conn.execute(
+                """
+                DELETE FROM messages
+                WHERE username = ? AND peer_address = ?
+                """,
+                (username, peer_address),
+            )
 
     def close(self) -> None:
         with self._lock:

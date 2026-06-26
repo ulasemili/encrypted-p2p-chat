@@ -1,290 +1,761 @@
-# Şifreli P2P Haberleşme Uygulaması
+# 🔐 Encrypted P2P Chat
 
-Bu proje, aynı ağdaki iki bilgisayarın merkezi sunucu kullanmadan doğrudan TCP/IP üzerinden haberleşmesini sağlar. Mesaj içerikleri ağda açık metin olarak gitmez. Mesajlar 6x6 Türkçe Playfair algoritmasıyla şifrelenir.
+Merkezi bir sunucu kullanmadan çalışan, güvenli ve şifreli eşler arası (Peer-to-Peer) haberleşme uygulaması.
 
-Bu sürümde bağlantıyı kuran kişi, o mesajlaşmada kullanılacak Playfair anahtarını kendisi belirler. Bu anahtar karşı tarafa açık şekilde gönderilmez. Önce Diffie-Hellman tabanlı güvenli anahtar değişimi yapılır, sonra Playfair anahtarı bu güvenli kanal üzerinden şifrelenerek karşı tarafa iletilir.
+Bu proje, ağ güvenliği ve kriptografi prensiplerini uygulamalı olarak göstermek amacıyla geliştirilmiştir. Kullanıcılar aynı ağ üzerinde veya farklı ağlarda doğrudan birbirleriyle bağlantı kurabilir, güvenli oturum anahtarı paylaşabilir ve mesajlarını şifreli şekilde iletebilirler.
 
-## Temel özellikler
+Uygulama içerisinde kullanıcı yönetimi, sohbet geçmişi, güvenli anahtar paylaşımı, son konuşmalar ekranı, farklı ağ desteği ve ağ üzerinde taşınan verinin şifreli olduğunu gösterebilen Sniffer aracı bulunmaktadır.
 
-- Python 3 ile Windows, macOS ve Linux desteği
-- CustomTkinter ile masaüstü arayüz
-- TCP/IP socket ile P2P bağlantı
-- Threading ile arayüz donmadan mesaj alma
-- SQLite ile yerel kullanıcı ve mesaj geçmişi kaydı
-- SHA-256 ile parola hashleme
-- 29 Türkçe harf + 7 karakter içeren 6x6 Playfair şifreleme
-- RSA kullanmadan Diffie-Hellman tabanlı güvenli anahtar paylaşımı
-- Mesajların ekranda önce şifreli görünmesi
-- Mesaja tıklayınca açık metnin gösterilmesi
-- Oturum anahtarının ekranda doğrudan görünmemesi, sadece butona basınca gösterilmesi
+---
 
-## Klasör yapısı
+# 🎯 Projenin Amacı
 
-```text
-encrypted_p2p_chat/
-│
-├── run.py
-├── requirements.txt
-├── README.md
-├── .gitignore
-│
-└── app/
-    ├── config.py
-    ├── crypto/
-    │   ├── playfair.py
-    │   └── key_exchange.py
-    ├── db/
-    │   └── database.py
-    ├── network/
-    │   └── peer.py
-    ├── ui/
-    │   ├── login_window.py
-    │   └── chat_window.py
-    └── utils/
-        └── helpers.py
-```
+Geleneksel mesajlaşma uygulamalarında kullanıcılar genellikle merkezi bir sunucu üzerinden haberleşir.
 
-## Şifreleme sistemi nasıl çalışır?
+Bu projede amaç:
 
-Sistem iki aşamalı çalışır.
+* Merkezi sunucu kullanmamak
+* Kullanıcıların doğrudan birbirleriyle haberleşmesini sağlamak
+* Mesajların ağ üzerinde açık metin olarak gitmesini engellemek
+* Güvenli anahtar paylaşımı gerçekleştirmek
+* Şifreli haberleşmenin nasıl çalıştığını uygulamalı olarak göstermek
 
-### 1. Playfair anahtarını güvenli paylaşma
+Bu nedenle sistem tamamen P2P (Peer-to-Peer) mantığıyla tasarlanmıştır.
 
-Bağlantıyı başlatan kişi, arayüzdeki `Bu mesajlaşmanın Playfair anahtarı` alanına bir anahtar yazar. Varsayılan değer `türkiyem!` olarak gelir ama istenirse değiştirilebilir.
+---
 
-Bu anahtar karşı tarafa düz metin olarak gönderilmez. Bağlantı kurulunca iki taraf geçici anahtarlar üretir ve Diffie-Hellman mantığıyla ortak bir gizli değer oluşturur. Bu gizli değerden geçici bir şifreleme anahtarı türetilir. Bağlantıyı başlatan kişinin yazdığı Playfair anahtarı bu geçici anahtarla şifrelenerek karşı tarafa gönderilir.
+# 🚀 Özellikler
 
-Bu aşamada amaç yalnızca Playfair oturum anahtarını güvenli paylaşmaktır. Mesajların kendisi Diffie-Hellman ile şifrelenmez.
+### 👤 Kullanıcı Sistemi
 
-Ağda açık giden bilgiler:
+* Kullanıcı kayıt olma
+* Kullanıcı giriş yapma
+* SHA-256 ile parola hashleme
+* SQLite üzerinde güvenli kullanıcı saklama
+
+---
+
+### 🔑 Güvenli Oturum Anahtarı Paylaşımı
+
+Bağlantıyı başlatan kullanıcı sohbet sırasında kullanılacak Playfair anahtarını belirler.
+
+Bu anahtar:
+
+* Ağ üzerinde düz metin olarak gönderilmez
+* Diffie-Hellman (X25519) ile oluşturulan ortak gizli anahtar üzerinden korunur
+* Fernet kullanılarak şifrelenir
+* Karşı tarafa güvenli şekilde aktarılır
+
+Bu sayede iki taraf aynı anahtara sahip olurken ağ üzerindeki bir saldırgan anahtarı elde edemez.
+
+---
+
+### 💬 Şifreli Mesajlaşma
+
+Mesajlar gönderilmeden önce Playfair algoritması ile şifrelenir.
+
+Gönderilen veri:
 
 ```text
-public key değerleri
-kullanıcı adı
-paket tipi
-zaman bilgisi
+MERHABA
 ```
 
-Ağda açık gitmeyen bilgiler:
+yerine ağ üzerinde şu şekilde görünür:
 
 ```text
-Playfair oturum anahtarı
-mesajların açık hali
+XZKJQMFV...
 ```
 
-### 2. Mesajları Playfair ile şifreleme
+Alıcı taraf aynı oturum anahtarına sahip olduğu için mesajı çözebilir.
 
-İki tarafta da aynı Playfair oturum anahtarı hazır olunca mesajlar 6x6 Türkçe Playfair algoritmasıyla şifrelenir.
+---
 
-Matris karakterleri:
+### 🖱 Mesaja Tıklayarak Açma
+
+Mesajlar ilk olarak şifreli halde görüntülenir.
+
+Kullanıcı isterse mesaj balonuna tıklayarak:
+
+* Şifreli metni
+* Açık metni
+
+görüntüleyebilir.
+
+Bu özellik özellikle proje sunumlarında şifreli veri akışını göstermek amacıyla eklenmiştir.
+
+---
+
+### 🌐 Aynı Wi-Fi Desteği
+
+Kullanıcılar aynı yerel ağ üzerindeyse:
+
+* Yerel IP adresi kullanarak
+* Doğrudan bağlantı kurabilir
+
+Örnek:
 
 ```text
-29 Türkçe harf:
-a b c ç d e f g ğ h ı i j k l m n o ö p r s ş t u ü v y z
-
-7 ek karakter:
-boşluk . , ? ! : ^
+192.168.1.25
 ```
 
-`^` karakteri teknik dolgu karakteridir. Aynı iki karakter yan yana geldiğinde veya mesaj tek karakterle bittiğinde Playfair algoritmasının ikili gruplama mantığı için kullanılır.
+---
 
-## Arayüzde mesajlar neden şifreli görünüyor?
+### 🌍 Farklı Wi-Fi Desteği
 
-Mesaj balonları ilk geldiğinde veya gönderildiğinde yalnızca şifreli metni gösterir. Balonun içinde gönderen adı veya açıklama yazısı bulunmaz. Açık metni görmek için mesaj balonuna tıklaman gerekir. Tıkladıktan sonra o mesaj açık hale geçer.
+Proje yalnızca yerel ağlarda değil farklı internet bağlantılarında da çalışabilir.
 
-Bu davranış, sunumda şunu göstermek için özellikle eklenmiştir:
+Bunun için Tailscale entegrasyonu kullanılmıştır.
+
+Tailscale sayesinde:
+
+* NAT problemleri ortadan kalkar
+* Port yönlendirme gerekmez
+* Cihazlar güvenli özel ağ içerisinde haberleşebilir
+
+Uygulama içerisinde:
 
 ```text
-Ağda ve uygulamanın ilk görüntüsünde mesaj ciphertext olarak durur.
-Kullanıcı isteyince, doğru oturum anahtarıyla plaintext elde edilir.
+Aynı Wi-Fi
 ```
 
-## İlk kurulum - Mac
-
-### 1. Homebrew yoksa kur
-
-```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-```
-
-### 2. Python ve Tkinter kur
-
-```bash
-brew install python@3.12
-brew install python-tk@3.12
-```
-
-### 3. Proje klasörüne gir
-
-ZIP dosyasını Downloads içine çıkardıysan:
-
-```bash
-cd ~/Downloads/encrypted_p2p_chat
-```
-
-### 4. Sanal ortam oluştur
-
-```bash
-python3.12 -m venv .venv
-source .venv/bin/activate
-```
-
-### 5. Gerekli paketleri kur
-
-```bash
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-### 6. Uygulamayı çalıştır
-
-```bash
-export TK_SILENCE_DEPRECATION=1
-python run.py
-```
-
-## İlk kurulum - Windows
-
-### 1. Python kur
-
-Önerilen yöntem: `python.org` üzerinden Python 3.12 kurmak.
-
-Kurulum ekranında şu seçenek işaretli olmalı:
+ve
 
 ```text
-Add python.exe to PATH
+Farklı Wi-Fi / Tailscale
 ```
 
-Microsoft Store Python kullanıyorsan da çalışabilir. Kontrol için PowerShell'de şunu deneyebilirsin:
+olmak üzere iki farklı bağlantı modu bulunmaktadır.
+
+---
+
+### 🗂 Son Konuşmalar Sistemi
+
+Kullanıcıların geçmiş konuşmaları yerel veritabanında tutulur.
+
+Son konuşmalar ekranı sayesinde:
+
+* Daha önce konuşulan kişiler görüntülenebilir
+* Sohbet geçmişi tekrar açılabilir
+* Sohbet geçmişi silinebilir
+* Kullanıcı adı bazlı listeleme yapılır
+
+---
+
+### 🔒 Şifre Korumalı Geçmiş Erişimi
+
+Sohbet geçmişine erişmek isteyen kullanıcıdan tekrar parola istenir.
+
+Bu sayede:
+
+* Bilgisayarı kullanan başka kişiler
+* Açık kalan oturumlar
+
+üzerinden geçmiş konuşmalar görüntülenemez.
+
+---
+
+### 🗑 Sohbet Geçmişi Silme
+
+Son konuşmalar ekranında bulunan çöp kutusu simgesi sayesinde:
+
+* İstenilen konuşma geçmişi
+* Tek tıklamayla silinebilir
+
+Silinen kayıtlar SQLite veritabanından kaldırılır.
+
+---
+
+### 🔍 Sniffer Proxy
+
+Proje içerisinde bulunan Sniffer aracı eğitim ve sunum amaçlı geliştirilmiştir.
+
+Bu araç sayesinde:
+
+* Ağ üzerinden geçen paketler görüntülenebilir
+* Mesajların düz metin gitmediği gösterilebilir
+* Şifreli veri akışı analiz edilebilir
+
+Sniffer yalnızca paketleri görüntüler.
+
+Mesajları değiştirmez ve haberleşmeye müdahale etmez.
+
+---
+
+# 🏗 Sistem Mimarisi
+
+Bağlantı süreci aşağıdaki şekilde çalışır:
+
+```text
+Kullanıcı A
+      │
+      │ Diffie-Hellman
+      ▼
+Ortak Gizli Anahtar
+      │
+      │ Fernet
+      ▼
+Playfair Anahtarının Güvenli Aktarımı
+      │
+      │
+      ▼
+Şifreli Haberleşme
+      │
+      ▼
+Kullanıcı B
+```
+
+Mesaj gönderme süreci:
+
+```text
+Mesaj Yazılır
+      │
+      ▼
+Playfair ile Şifrelenir
+      │
+      ▼
+TCP/IP Üzerinden Gönderilir
+      │
+      ▼
+Karşı Taraf Mesajı Alır
+      │
+      ▼
+Playfair ile Çözer
+      │
+      ▼
+Açık Metin Görüntülenir
+```
+
+---
+
+# 🧰 Kullanılan Teknolojiler
+
+| Teknoloji     | Kullanım Amacı                  |
+| ------------- | ------------------------------- |
+| Python 3      | Uygulama geliştirme             |
+| CustomTkinter | Grafik arayüz                   |
+| SQLite        | Kullanıcı ve mesaj kayıtları    |
+| TCP Socket    | P2P haberleşme                  |
+| Threading     | Eş zamanlı veri alma            |
+| SHA-256       | Parola hashleme                 |
+| X25519        | Diffie-Hellman anahtar değişimi |
+| Fernet        | Güvenli anahtar aktarımı        |
+| Playfair 6x6  | Mesaj şifreleme                 |
+| Tailscale     | Farklı ağlarda bağlantı         |
+| Sniffer Proxy | Trafik analizi                  |
+
+```
+```
+# 📥 Kurulum
+
+Uygulamayı çalıştırabilmek için bilgisayarınızda Python kurulu olmalıdır.
+
+Desteklenen işletim sistemleri:
+
+* Windows
+* macOS
+* Linux
+
+---
+
+# 🖥 Windows Kurulumu
+
+## 1. Python Kurulumu
+
+Öncelikle Python 3.12 veya daha güncel bir sürüm kurulu olmalıdır.
+
+Kurulum sırasında aşağıdaki seçeneğin işaretli olduğundan emin olun:
+
+```text
+Add Python to PATH
+```
+
+Kurulum tamamlandıktan sonra Komut İstemi'ni açın ve aşağıdaki komutu çalıştırın:
 
 ```powershell
 python --version
-python -m tkinter
 ```
 
-`python -m tkinter` küçük bir pencere açıyorsa Tkinter vardır.
+Örnek çıktı:
 
-### 2. Proje klasörüne gir
+```text
+Python 3.12.4
+```
 
-ZIP dosyasını Downloads içine çıkardıysan:
+---
+
+## 2. Projeyi İndirme
+
+Git kullanıyorsanız:
 
 ```powershell
-cd Downloads\encrypted_p2p_chat
+git clone https://github.com/USERNAME/encrypted-p2p-chat.git
+cd encrypted-p2p-chat
 ```
 
-### 3. Sanal ortam oluştur
+Git kullanmıyorsanız GitHub üzerinden ZIP indirip klasöre çıkartabilirsiniz.
+
+---
+
+## 3. Sanal Ortam Oluşturma
 
 ```powershell
 python -m venv .venv
 ```
 
-veya:
+---
 
-```powershell
-py -3.12 -m venv .venv
-```
-
-### 4. Sanal ortamı aktif et
+## 4. Sanal Ortamı Aktifleştirme
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
 ```
 
-İzin hatası alırsan bir kez şunu çalıştır:
+Başarılı olursa terminal satırının başında aşağıdakine benzer bir ifade görünür:
 
-```powershell
-Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```text
+(.venv)
 ```
 
-Sonra tekrar aktif et:
+---
 
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-### 5. Gerekli paketleri kur
+## 5. Gerekli Paketleri Kurma
 
 ```powershell
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 6. Uygulamayı çalıştır
+---
+
+## 6. Uygulamayı Başlatma
 
 ```powershell
 python run.py
 ```
 
-Windows Güvenlik Duvarı uyarı verirse Python için özel ağ erişimine izin ver.
+---
 
-## İkinci ve sonraki çalıştırmalar
+# 🍎 macOS Kurulumu
 
-Kurulum bir kez yapıldıktan sonra her seferinde `pip install` yapmana gerek yoktur.
+## 1. Homebrew Kurulumu
 
-Mac:
+Homebrew kurulu değilse:
 
 ```bash
-cd ~/Downloads/encrypted_p2p_chat
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+---
+
+## 2. Python Kurulumu
+
+```bash
+brew install python@3.12
+```
+
+---
+
+## 3. Projeyi İndirme
+
+```bash
+git clone https://github.com/USERNAME/encrypted-p2p-chat.git
+cd encrypted-p2p-chat
+```
+
+---
+
+## 4. Sanal Ortam Oluşturma
+
+```bash
+python3 -m venv .venv
+```
+
+---
+
+## 5. Sanal Ortamı Aktifleştirme
+
+```bash
 source .venv/bin/activate
-export TK_SILENCE_DEPRECATION=1
+```
+
+---
+
+## 6. Paketleri Kurma
+
+```bash
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+---
+
+## 7. Uygulamayı Çalıştırma
+
+```bash
 python run.py
 ```
+
+---
+
+# 🚀 İlk Kullanım
+
+Uygulama açıldığında giriş ekranı görüntülenir.
+
+İlk kullanımda:
+
+1. Kullanıcı adı belirleyin.
+2. Şifre belirleyin.
+3. Kayıt Ol seçeneğini kullanın.
+4. Daha sonra aynı bilgilerle giriş yapın.
+
+Parolalar düz metin olarak saklanmaz.
+
+Kullanıcı parolaları SHA-256 algoritması kullanılarak hashlenir ve veritabanında güvenli şekilde tutulur.
+
+---
+
+# 🔗 Aynı Wi-Fi Ağında Bağlantı Kurma
+
+Bu yöntem iki cihaz aynı ağ üzerindeyken kullanılır.
+
+Örneğin:
+
+```text
+Bilgisayar A → 192.168.1.20
+Bilgisayar B → 192.168.1.35
+```
+
+---
+
+## Adım 1
+
+İki bilgisayarda da uygulamayı açın.
+
+---
+
+## Adım 2
+
+İki bilgisayarda da giriş yapın.
+
+---
+
+## Adım 3
+
+İki bilgisayarda da:
+
+```text
+Dinlemeyi Başlat
+```
+
+butonuna basın.
+
+---
+
+## Adım 4
+
+Bağlantıyı başlatacak kullanıcı:
+
+```text
+Aynı Wi-Fi
+```
+
+modunu seçer.
+
+---
+
+## Adım 5
+
+Karşı bilgisayarın IP adresini girer.
+
+Örnek:
+
+```text
+192.168.1.35
+```
+
+---
+
+## Adım 6
+
+Mesajlaşmada kullanılacak Playfair anahtarını belirler.
+
+Örnek:
+
+```text
+gizli_anahtar
+```
+
+---
+
+## Adım 7
+
+Bağlan butonuna basar.
+
+---
+
+## Adım 8
+
+Bağlantı tamamlandıktan sonra güvenli oturum oluşturulur ve mesajlaşma başlayabilir.
+
+---
+
+# 🌍 Farklı Wi-Fi Ağlarında Kullanım
+
+Bu özellik sayesinde kullanıcılar farklı şehirlerde, farklı evlerde veya farklı internet bağlantılarında olsalar bile haberleşebilir.
+
+Bu işlem için Tailscale kullanılmaktadır.
+
+---
+
+# 🛡 Tailscale Kurulumu
 
 Windows:
 
-```powershell
-cd Downloads\encrypted_p2p_chat
-.\.venv\Scripts\Activate.ps1
-python run.py
-```
+https://tailscale.com/download/windows
 
-## İki bilgisayarda test etme
+macOS:
 
-1. İki bilgisayar aynı Wi-Fi veya LAN ağına bağlı olsun.
-2. İki bilgisayarda da uygulamayı aç.
-3. İki bilgisayarda da kullanıcı oluşturup giriş yap.
-4. İki bilgisayarda da `Dinlemeyi Başlat` butonuna bas.
-5. Bağlantıyı başlatacak bilgisayarda karşı tarafın IP adresini ve portunu yaz.
-6. Aynı bilgisayarda `Bu mesajlaşmanın Playfair anahtarı` alanına kullanılacak anahtarı yaz.
-7. `Bağlan` butonuna bas.
-8. Diffie-Hellman tabanlı değişim tamamlanınca iki tarafta da `Anahtar: güvenli oturum hazır` yazar.
-9. Anahtarı görmek istersen `Oturum Anahtarını Göster` butonuna basabilirsin.
-10. Mesaj gönder. Mesaj balonu önce şifreli görünür.
-11. Mesajın açık halini görmek için mesaj balonuna tıkla.
+https://tailscale.com/download
 
-## Sunumda kısa anlatım
+Kurulum tamamlandıktan sonra aynı hesap ile giriş yapılmalıdır.
 
-Projede merkezi sunucu yoktur. Her uygulama aynı anda hem dinleyici hem gönderici gibi çalışır. Bağlantıyı kuran taraf, o oturumda kullanılacak Playfair anahtarını belirler. Bu anahtar ağda açık gönderilmez; önce Diffie-Hellman tabanlı geçici bir güvenli kanal oluşturulur, sonra Playfair anahtarı bu kanalda şifreli gönderilir. Bundan sonraki mesajların tamamı projeye özel 6x6 Türkçe Playfair algoritması ile şifrelenir. Mesajlar arayüzde de önce şifreli görünür; kullanıcı mesaj balonuna tıkladığında doğru oturum anahtarıyla çözülüp açık hale getirilir. Kullanıcı parolaları SQLite veritabanında açık değil SHA-256 hash olarak tutulur.
+---
 
-## Sorun giderme
+# Tailscale IP Öğrenme
 
-### Uygulama açılmıyor
-
-Mac'te Tkinter eksik olabilir:
+Terminal açın:
 
 ```bash
-brew install python-tk@3.12
+tailscale ip -4
 ```
 
-Windows'ta Tkinter kontrolü:
-
-```powershell
-python -m tkinter
-```
-
-### Bağlantı kurulamıyor
-
-Kontrol et:
+Örnek çıktı:
 
 ```text
-1. İki bilgisayar aynı ağda mı?
-2. İki tarafta da Dinlemeyi Başlat butonuna basıldı mı?
-3. IP adresi doğru mu?
-4. Port iki tarafta da aynı mı? Varsayılan: 5050
-5. Windows Güvenlik Duvarı Python'a özel ağ izni verdi mi?
-6. Okul/modem ağı cihazların birbirini görmesini engelliyor olabilir mi?
+100.124.216.57
 ```
 
-### Mesaj çözülemiyor veya anlamsız çıkıyor
+Bu IP adresi uygulamada kullanılacaktır.
 
-Bu sürümde anahtarı bağlantıyı başlatan kişi belirler ve karşı tarafa güvenli şekilde gönderilir. Yine de iki bilgisayarda farklı proje sürümleri çalışıyorsa sorun yaşanabilir. İki tarafta da aynı ZIP sürümünü kullan.
+---
+
+# Farklı Ağlarda Bağlantı Kurma
+
+Dinleyen cihaz:
+
+```text
+Dinlemeyi Başlat
+```
+
+butonuna basar.
+
+Bağlanan cihaz:
+
+```text
+Farklı Wi-Fi / Tailscale
+```
+
+modunu seçer.
+
+Karşı cihazın Tailscale IP adresini girer.
+
+Örnek:
+
+```text
+100.124.216.57
+```
+
+Bağlan butonuna basar.
+
+Bağlantı kurulduktan sonra normal şekilde mesajlaşılabilir.
+
+---
+
+# 🗂 Son Konuşmalar
+
+Uygulama konuşmaları otomatik olarak kaydeder.
+
+Sol tarafta bulunan:
+
+```text
+Son Konuşmalar
+```
+
+alanı sayesinde daha önce iletişim kurulan kullanıcılar görüntülenebilir.
+
+---
+
+## Sohbet Geçmişini Açma
+
+Bir konuşmaya tıklandığında kullanıcıdan şifre istenir.
+
+Şifre doğrulandıktan sonra geçmiş mesajlar yüklenir.
+
+Bu özellik cihaz başında bulunan farklı kişilerin sohbet geçmişlerini görüntülemesini engellemek amacıyla eklenmiştir.
+
+---
+
+## Sohbet Geçmişini Silme
+
+Her konuşmanın yanında çöp kutusu simgesi bulunur.
+
+Bu simgeye basıldığında:
+
+* İlgili konuşma
+* Mesaj kayıtları
+* Sohbet geçmişi
+
+veritabanından kaldırılır.
+
+---
+
+# 🔍 Sniffer GUI
+
+Proje içerisinde bulunan Sniffer aracı eğitim amaçlı geliştirilmiştir.
+
+Amaç ağ üzerinde taşınan verinin gerçekten şifreli olduğunu göstermektir.
+
+---
+
+# Sniffer Başlatma
+
+```bash
+python -m app.tools.sniffer_gui
+```
+
+---
+
+# Sniffer Nasıl Çalışır?
+
+Normal haberleşme:
+
+```text
+Gönderici
+     │
+     ▼
+Alıcı
+```
+
+Sniffer kullanıldığında:
+
+```text
+Gönderici
+     │
+     ▼
+Sniffer
+     │
+     ▼
+Alıcı
+```
+
+---
+
+# Sniffer Kullanımı
+
+Dinleme Portu:
+
+```text
+6060
+```
+
+Gerçek Alıcı Portu:
+
+```text
+5050
+```
+
+Gönderici cihaz:
+
+```text
+Karşı IP = Sniffer IP
+Karşı Port = 6060
+```
+
+şeklinde bağlanır.
+
+---
+
+# Sniffer Ne Gösterir?
+
+Sniffer mesajların düz metin halini göstermez.
+
+Örneğin kullanıcı:
+
+```text
+Merhaba
+```
+
+gönderdiğinde Sniffer ekranında:
+
+```text
+QJXKZBVP...
+```
+
+gibi şifreli veri görülür.
+
+Bu durum sistemin gerçekten şifreli haberleştiğini gösterir.
+
+---
+
+# 📁 Proje Yapısı
+
+```text
+encrypted-p2p-chat
+│
+├── run.py
+├── requirements.txt
+├── README.md
+│
+└── app
+    │
+    ├── crypto
+    │   ├── playfair.py
+    │   └── key_exchange.py
+    │
+    ├── db
+    │   └── database.py
+    │
+    ├── network
+    │   └── peer.py
+    │
+    ├── ui
+    │   ├── login_window.py
+    │   └── chat_window.py
+    │
+    ├── tools
+    │   ├── sniffer_proxy.py
+    │   └── sniffer_gui.py
+    │
+    └── utils
+        └── helpers.py
+```
+
+---
+
+# 🧪 Akademik Amaç
+
+Bu proje;
+
+* Kriptografi
+* Ağ Programlama
+* Güvenli Haberleşme
+* P2P Sistemler
+* Anahtar Yönetimi
+* Trafik Analizi
+
+konularını uygulamalı olarak göstermek amacıyla geliştirilmiştir.
+
+---
+
+# ⚠️ Not
+
+Bu proje eğitim ve akademik çalışmalar için geliştirilmiştir.
+
+Gerçek dünyadaki ticari mesajlaşma uygulamalarında:
+
+* Kimlik doğrulama
+* Sertifika yönetimi
+* İleri seviye anahtar rotasyonu
+* Güvenlik denetimleri
+
+gibi ek mekanizmalar kullanılmaktadır.

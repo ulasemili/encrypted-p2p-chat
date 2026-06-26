@@ -48,7 +48,7 @@ class ChatWindow(ctk.CTkToplevel):
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        sidebar = ctk.CTkFrame(self, width=310, corner_radius=0)
+        sidebar = ctk.CTkScrollableFrame(self, width=310, corner_radius=0)
         sidebar.grid(row=0, column=0, sticky="nsew")
         sidebar.grid_columnconfigure(0, weight=1)
 
@@ -80,18 +80,9 @@ class ChatWindow(ctk.CTkToplevel):
         self._build_connect_box(parent, row=4)
         self._build_key_box(parent, row=5)
         self._build_status_box(parent, row=6)
+        self._build_recent_chats_box(parent, row=7)
+        self._build_help_box(parent,row=8)
 
-        help_text = (
-            "Kullanım:\n"
-            "1) İki bilgisayarda da dinlemeyi başlatın.\n"
-            "2) Bağlanan taraf Playfair anahtarını yazar.\n"
-            "3) Anahtar Diffie-Hellman sonrası şifreli gönderilir.\n"
-            "4) Mesajlar ekranda önce şifreli görünür.\n"
-            "5) Mesaja tıklayınca açık metin gösterilir."
-        )
-        ctk.CTkLabel(parent, text=help_text, justify="left", wraplength=265, text_color="gray75").grid(
-            row=7, column=0, padx=18, pady=(12, 0), sticky="w"
-        )
 
     def _build_listen_box(self, parent: ctk.CTkFrame, row: int) -> None:
         box = ctk.CTkFrame(parent)
@@ -246,6 +237,223 @@ class ChatWindow(ctk.CTkToplevel):
             row=0, column=1, padx=(8, 12), pady=12
         )
 
+    def _build_recent_chats_box(self, parent: ctk.CTkFrame, row: int) -> None:
+        box = ctk.CTkFrame(parent)
+        box.grid(row=row, column=0, padx=14, pady=8, sticky="ew")
+        box.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            box,
+            text="Son Konuşmalar",
+            font=ctk.CTkFont(size=15, weight="bold")
+        ).grid(row=0, column=0, padx=12, pady=(12, 6), sticky="w")
+
+        self.recent_chats_frame = ctk.CTkScrollableFrame(box, height=130)
+        self.recent_chats_frame.grid(row=1, column=0, padx=12, pady=(0, 12), sticky="ew")
+        self.recent_chats_frame.grid_columnconfigure(0, weight=1)
+
+        self._load_recent_chats()
+
+    def _build_help_box(self, parent, row: int) -> None:
+        box = ctk.CTkFrame(parent)
+        box.grid(row=row, column=0, padx=14, pady=8, sticky="ew")
+        box.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            box,
+            text="Kullanım",
+            font=ctk.CTkFont(size=15, weight="bold")
+        ).grid(row=0, column=0, padx=12, pady=(12, 6), sticky="w")
+
+        help_text = (
+            "1) İki bilgisayarda da dinlemeyi başlatın.\n"
+            "2) Bağlanan taraf Playfair anahtarını belirler.\n"
+            "3) Anahtar güvenli şekilde aktarılır.\n"
+            "4) Mesajlar ağda şifreli gider.\n"
+            "5) Mesaja tıklayarak açık metni görebilirsiniz."
+        )
+
+        ctk.CTkLabel(
+            box,
+            text=help_text,
+            justify="left",
+            wraplength=250,
+            text_color="gray70"
+        ).grid(row=1, column=0, padx=12, pady=(0, 12), sticky="w")
+
+    def _load_recent_chats(self) -> None:
+        for widget in self.recent_chats_frame.winfo_children():
+            widget.destroy()
+
+        rows = self.db.get_recent_peers(self.username)
+
+        if not rows:
+            ctk.CTkLabel(
+                self.recent_chats_frame,
+                text="Henüz kayıtlı konuşma yok.",
+                text_color="gray70"
+            ).grid(row=0, column=0, padx=8, pady=8, sticky="w")
+            return
+
+        for index, row in enumerate(rows):
+            peer_address = row["peer_address"]
+            display_name = row["display_name"]
+            message_count = row["message_count"]
+
+            text = f"{display_name}  •  {message_count} mesaj"
+
+            row_frame = ctk.CTkFrame(self.recent_chats_frame, fg_color="transparent")
+            row_frame.grid(row=index, column=0, padx=4, pady=4, sticky="ew")
+            row_frame.grid_columnconfigure(0, weight=1)
+
+            ctk.CTkButton(
+                row_frame,
+                text=text,
+                anchor="w",
+                fg_color="gray25",
+                hover_color="gray35",
+                command=lambda address=peer_address: self._ask_password_and_open_history(address),
+            ).grid(row=0, column=0, padx=(0, 6), sticky="ew")
+
+            ctk.CTkButton(
+                row_frame,
+                text="🗑",
+                width=36,
+                fg_color="gray25",
+                hover_color="red",
+                command=lambda address=peer_address: self._delete_recent_chat(address),
+            ).grid(row=0, column=1, sticky="e")
+
+    def _delete_recent_chat(self, peer_address: str) -> None:
+        answer = messagebox.askyesno(
+            "Sohbeti Sil",
+            "Bu kişiyle olan sohbet geçmişini silmek istiyor musunuz?"
+        )
+
+        if not answer:
+            return
+
+        self.db.delete_messages_with_peer(self.username, peer_address)
+        self._load_recent_chats()
+
+    def _ask_password_and_open_history(self, peer_address: str) -> None:
+        popup = ctk.CTkToplevel(self)
+        popup.title("Sohbet Geçmişi")
+        popup.geometry("360x180")
+        popup.resizable(False, False)
+        popup.grab_set()
+
+        ctk.CTkLabel(
+            popup,
+            text="Sohbet geçmişini görüntülemek için\nkullanıcı şifrenizi girin.",
+            justify="center"
+        ).pack(pady=(20, 10))
+
+        password_entry = ctk.CTkEntry(popup, show="*")
+        password_entry.pack(padx=24, pady=8, fill="x")
+
+        def check_password() -> None:
+            password = password_entry.get()
+
+            if not self.db.verify_user(self.username, password):
+                messagebox.showerror("Hatalı Şifre", "Kullanıcı şifresi yanlış.")
+                return
+
+            popup.destroy()
+            self._open_chat_from_recent(peer_address)
+
+        ctk.CTkButton(
+            popup,
+            text="Geçmişi Aç",
+            command=check_password
+        ).pack(pady=12)
+
+        password_entry.bind("<Return>", lambda _event: check_password())
+
+
+    def _open_chat_history(self, peer_address: str) -> None:
+        rows = self.db.get_messages_with_peer(self.username, peer_address, limit=100)
+
+        history_window = ctk.CTkToplevel(self)
+        history_window.title(f"Son Konuşmalar - {peer_address}")
+        history_window.geometry("720x520")
+        history_window.grid_columnconfigure(0, weight=1)
+        history_window.grid_rowconfigure(1, weight=1)
+
+        ctk.CTkLabel(
+            history_window,
+            text=f"Sohbet Geçmişi: {peer_address}",
+            font=ctk.CTkFont(size=18, weight="bold")
+        ).grid(row=0, column=0, padx=16, pady=(16, 8), sticky="w")
+
+        frame = ctk.CTkScrollableFrame(history_window)
+        frame.grid(row=1, column=0, padx=16, pady=(0, 16), sticky="nsew")
+        frame.grid_columnconfigure(0, weight=1)
+
+        if not rows:
+            ctk.CTkLabel(
+                frame,
+                text="Bu kişiyle kayıtlı mesaj bulunamadı.",
+                text_color="gray70"
+            ).grid(row=0, column=0, padx=8, pady=8, sticky="w")
+            return
+
+        for index, row in enumerate(rows):
+            direction = "Ben" if row["direction"] == "OUT" else "Karşı taraf"
+            text = (
+                f"{direction} • {row['created_at']}\n\n"
+                f"Şifreli:\n{row['ciphertext']}\n\n"
+                f"Açık Metin:\n{row['plaintext']}"
+            )
+
+            ctk.CTkLabel(
+                frame,
+                text=text,
+                justify="left",
+                anchor="w",
+                wraplength=640,
+                fg_color=("gray85", "gray25"),
+                corner_radius=10
+            ).grid(row=index, column=0, padx=8, pady=8, sticky="ew")
+
+    def _open_chat_from_recent(self, peer_address: str) -> None:
+        rows = self.db.get_messages_with_peer(self.username, peer_address, limit=100)
+
+        # Sohbet ekranını temizle
+        for widget in self.chat_area.winfo_children():
+            widget.destroy()
+
+        self._message_row = 0
+
+        # Başlığı güncelle
+        self.peer_username = peer_address
+        self._refresh_peer_header()
+
+        if not rows:
+            self._add_system_message("Bu konuşmaya ait kayıtlı mesaj bulunamadı.")
+            return
+
+        self._add_system_message("Seçilen sohbet geçmişi yüklendi.")
+
+        for row in rows:
+            direction = row["direction"]
+            outgoing = direction == "OUT"
+
+            if outgoing:
+                sender_name = "Ben"
+            else:
+                try:
+                    sender_name = row["peer_username"] or "Karşı taraf"
+                except Exception:
+                    sender_name = "Karşı taraf"
+
+            self._add_message_bubble(
+                sender_name,
+                row["ciphertext"],
+                row["plaintext"],
+                outgoing=outgoing,
+            )
+
     def _on_connection_mode_changed(self, mode: str) -> None:
         if mode == "Aynı Wi-Fi":
             self.peer_ip_entry.configure(
@@ -331,8 +539,9 @@ class ChatWindow(ctk.CTkToplevel):
         payload = {"type": "message", "sender": self.username, "ciphertext": ciphertext, "timestamp": now_iso()}
 
         if self.peer.send_payload(payload):
-            self.db.save_message(self.username, self.peer.peer_address, "OUT", plaintext, ciphertext)
+            self.db.save_message(self.username, self.peer.peer_address, "OUT", plaintext, ciphertext, self.peer_username)
             self._add_message_bubble("Ben", ciphertext, plaintext, outgoing=True)
+            self._load_recent_chats()
             self.message_entry.delete(0, "end")
 
     def show_session_key(self) -> None:
@@ -447,8 +656,18 @@ class ChatWindow(ctk.CTkToplevel):
             session_key = self.session_cipher.decrypt(encrypted_key).decode("utf-8")
             self._set_session_key(session_key)
             self._add_system_message("Playfair oturum anahtarı güvenli şekilde alındı. Mesajlaşma hazır.")
+            self.after(100, self._show_session_key_received_popup)
         except Exception as exc:
             self._set_status(f"Oturum anahtarı çözülemedi: {exc}", connected=True, error=True)
+
+    def _show_session_key_received_popup(self) -> None:
+        answer = messagebox.askyesno(
+            "Oturum Anahtarı Alındı",
+            "Güvenli oturum anahtarı alındı.\n\nAnahtarı görüntülemek ister misiniz?"
+        )
+
+        if answer:
+            self.show_session_key()
 
     def _receive_chat_message(self, payload: dict[str, Any], addr: tuple[str, int]) -> None:
         if self.session_key is None:
@@ -466,8 +685,9 @@ class ChatWindow(ctk.CTkToplevel):
 
         self._update_peer_name(sender)
         peer_address = f"{addr[0]}:{addr[1]}"
-        self.db.save_message(self.username, peer_address, "IN", plaintext, ciphertext)
+        self.db.save_message(self.username, peer_address, "IN", plaintext, ciphertext, sender)
         self._add_message_bubble(sender, ciphertext, plaintext, outgoing=False)
+        self._load_recent_chats()
 
     def _on_network_status(self, text: str) -> None:
         self.after(0, lambda: self._set_status(text, connected=self.peer.connected))
